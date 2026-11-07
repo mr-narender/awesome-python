@@ -6,7 +6,7 @@ How to choose:
 - Nested commands, or subcommands loaded lazily: Click
 - Options declared once as type-hinted function parameters: Typer
 - Interactive prompts and REPLs: prompt_toolkit
-- CLI from existing code without writing a parser: Python Fire
+- Help text read from your docstrings: cyclopts
 - Progress bar for a loop: tqdm, or alive-progress for animated bars
 - Colored text, tables, and logs: Rich, or colorama for ANSI colors on Windows
 - Full-screen app in the terminal or a browser: Textual
@@ -21,7 +21,7 @@ Typer builds a CLI from your function signatures: you [declare each argument and
 
 prompt_toolkit is for interactive input. It can [replace GNU readline](https://python-prompt-toolkit.readthedocs.io/en/stable/) or build full-screen apps. For a REPL, use a [`PromptSession`](https://python-prompt-toolkit.readthedocs.io/en/stable/pages/asking_for_input.html), which keeps the history for the whole session.
 
-Python Fire turns any Python object into a CLI: [call `fire.Fire()`](https://github.com/google/python-fire/blob/master/docs/guide.md) at the end of your program. Its README pitches it for [developing and debugging your code](https://github.com/google/python-fire), exploring existing code, and turning other people's code into a CLI. It takes each argument's type from the value you pass, not from the function signature.
+cyclopts also builds a CLI from type-hinted functions, but reads the help text from your docstrings. Its docs call that [the preferred way to document a command](https://cyclopts.readthedocs.io/en/latest/commands.html), and reach for `Annotated` with `Parameter` only when you need more control. It follows Python's own argument binding rules, so a parameter can be passed [by position or as a keyword](https://cyclopts.readthedocs.io/en/latest/vs_typer/positional_or_keyword/README.html). It has its own parser, with no Click underneath. Register commands with `@app.command`, and the function to run when no command matches with [`@app.default`](https://cyclopts.readthedocs.io/en/latest/getting_started.html).
 
 tqdm adds a progress bar to any loop: [wrap the iterable in `tqdm()`](https://github.com/tqdm/tqdm). Import it from `tqdm.auto`, which picks the console bar or the Jupyter widget for you. alive-progress wraps the loop in an [`alive_bar` context manager](https://github.com/rsalmei/alive-progress) instead, with a spinner that speeds up and slows down with your throughput.
 
