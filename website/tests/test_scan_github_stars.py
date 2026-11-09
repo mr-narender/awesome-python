@@ -102,6 +102,35 @@ def test_parking_reopens_one_repo_from_rejected_organization(scan):
     assert "rejected again" in run("--full").out
 
 
+def test_unstarred_repos_are_pruned_from_ledger(scan):
+    module, _, run = scan
+    kept = "repo\tdate\treason\nexample/project\t2026-10-16\tno use case\n"
+    module.LEDGER.write_text(kept + "gone/repo\t2026-10-16\tno use case\ngone/repo\t2026-10-17\tparked\n")
+
+    assert "pruned 2" in run().err
+    assert module.LEDGER.read_text() == kept
+
+
+def test_ledger_rows_keyed_by_github_url(scan):
+    module, _, run = scan
+    kept = "url\tdate\treason\nhttps://github.com/Example/Project\t2026-10-16\tno use case\n"
+    module.LEDGER.write_text(kept + "https://github.com/gone/repo\t2026-10-16\tno use case\n")
+
+    result = run()
+    assert "Example/Project" not in result.out
+    assert "pruned 1" in result.err
+    assert module.LEDGER.read_text() == kept
+
+
+def test_unstarred_repos_are_pruned_from_rejected_additions(scan):
+    module, _, run = scan
+    kept = "## Rejected Additions\n- Example/Project -- 2026-10-16: kept\n- gone/* -- 2026-10-16: organization pattern\n"
+    module.REGISTER.write_text(kept + "- gone/repo -- 2026-10-16: unstarred\n\n## Last Audited\n")
+
+    assert "pruned 1 Rejected Additions" in run("--full").err
+    assert module.REGISTER.read_text() == kept + "\n## Last Audited\n"
+
+
 def test_parking_keeps_other_exclusions(scan):
     module, star, run = scan
     now = datetime.now(UTC)

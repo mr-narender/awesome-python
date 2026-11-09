@@ -6,7 +6,9 @@ recomputed every run, so a repo that becomes active again resurfaces. An
 incremental run also drops stars already judged: model screen-outs in
 local/starred-scan.tsv and maintainer rejections under docs/audit-logs.md
 "Rejected Additions". `--full` keeps them and shows the earlier verdict in the
-`prior` column. Prints survivors as TSV on stdout, drop counts on stderr.
+`prior` column. Ledger rows and Rejected Additions lines for repos no longer
+starred are pruned each run.
+Prints survivors as TSV on stdout, drop and prune counts on stderr.
 """
 
 import argparse
@@ -60,16 +62,18 @@ def listed_repos() -> set[str]:
     return repos
 
 
+def ledger_repo(row: str) -> str:
+    """A ledger row starts with the repo's GitHub URL, or a bare owner/repo in older rows."""
+    return row.split("\t", 1)[0].removeprefix("https://github.com/").lower()
+
+
 def prior_verdicts() -> dict[str, str | None]:
     """The last ledger row wins; `parked` reopens a repo. An exact registered rejection still wins."""
     prior: dict[str, str | None] = {}
     if LEDGER.exists():
         for line in LEDGER.read_text().splitlines()[1:]:
-            repo, date, reason = line.split("\t", 2)
-            if reason == "parked":
-                prior[repo.lower()] = None
-            else:
-                prior[repo.lower()] = f"screened out {date}: {reason}"
+            _, date, reason = line.split("\t", 2)
+            prior[ledger_repo(line)] = None if reason == "parked" else f"screened out {date}: {reason}"
     register = REGISTER.read_text().splitlines()
     start = register.index("## Rejected Additions")
     for line in register[start + 1 :]:
@@ -78,6 +82,32 @@ def prior_verdicts() -> dict[str, str | None]:
         if match := REJECTED_LINE_RE.match(line):
             prior[match.group(1).lower()] = f"rejected {match.group(2)}"
     return prior
+
+
+def prune_ledger(starred: set[str]) -> int:
+    if not LEDGER.exists():
+        return 0
+    header, *rows = LEDGER.read_text().splitlines()
+    kept = [row for row in rows if ledger_repo(row) in starred]
+    if len(kept) < len(rows):
+        LEDGER.write_text("\n".join([header, *kept]) + "\n")
+    return len(rows) - len(kept)
+
+
+def prune_register(starred: set[str]) -> int:
+    """Drop Rejected Additions lines for repos no longer starred; `owner/*` patterns stay."""
+    lines = REGISTER.read_text().splitlines(keepends=True)
+    start = lines.index("## Rejected Additions\n")
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    kept = []
+    for line in lines[start:end]:
+        match = REJECTED_LINE_RE.match(line)
+        if match and not match.group(1).endswith("/*") and match.group(1).lower() not in starred:
+            continue
+        kept.append(line)
+    if len(kept) < end - start:
+        REGISTER.write_text("".join(lines[:start] + kept + lines[end:]))
+    return end - start - len(kept)
 
 
 def main() -> None:
@@ -91,6 +121,9 @@ def main() -> None:
     prior = prior_verdicts()
 
     stars: list[Star] = [json.loads(line) for line in gh("api", "--paginate", "user/starred?per_page=100", "--jq", ".[]").splitlines()]
+    starred = {star["full_name"].lower() for star in stars}
+    pruned = prune_ledger(starred)
+    pruned_rejections = prune_register(starred)
     dropped = Counter()
     print("repo\tlanguage\tstars\tpushed\ttopics\tdescription\tprior")
     for star in stars:
@@ -115,6 +148,10 @@ def main() -> None:
     print(f"{len(stars)} stars; {len(stars) - dropped.total()} candidates", file=sys.stderr)
     for reason, count in dropped.most_common():
         print(f"  dropped {count}: {reason}", file=sys.stderr)
+    if pruned:
+        print(f"  pruned {pruned} ledger rows for repos no longer starred", file=sys.stderr)
+    if pruned_rejections:
+        print(f"  pruned {pruned_rejections} Rejected Additions lines for repos no longer starred", file=sys.stderr)
 
 
 if __name__ == "__main__":
